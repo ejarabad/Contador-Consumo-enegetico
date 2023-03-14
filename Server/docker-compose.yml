@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.3'
 services:
   database:
     container_name: influxdb
@@ -7,10 +7,10 @@ services:
     ports:
       - "8086:8086"
     env_file:
-      - services/influx/.env
+      - Services/influx/.env
     build:
       context: .
-      dockerfile: services/influx/Dockerfile
+      dockerfile: Services/influx/Dockerfile
     networks:
       default:
         aliases:
@@ -22,7 +22,7 @@ services:
     restart: always
     build:
       context: .
-      dockerfile: services/rabbit/Dockerfile
+      dockerfile: Services/rabbit/Dockerfile
     ports:
       - "15672:15672"
       - "5672:5672"
@@ -38,7 +38,7 @@ services:
     restart: always
     build:
       context: .
-      dockerfile: services/grafana/Dockerfile
+      dockerfile: Services/grafana/Dockerfile
     ports:
       - "3000:3000"
       
@@ -48,7 +48,7 @@ services:
     restart: always
     build:
       context: .
-      dockerfile: services/telegraf/Dockerfile
+      dockerfile: Services/telegraf/Dockerfile
     depends_on:
       - database
       - broker
