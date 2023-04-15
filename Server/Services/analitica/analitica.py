@@ -5,6 +5,9 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 import numpy as np
 import smtplib
+import schedule
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -30,6 +33,7 @@ costo = 800
 datos = []
 promPot = 0
 tiempo_inicial = time.time() # guarda el tiempo actual
+tiempo_inicial_voltaje = time.time()
 
 # Abre el archivo CSV en modo de escritura y define el encabezado
 with open('datos.csv', 'w', newline='') as archivo_csv:
@@ -59,15 +63,48 @@ client.subscribe('voltaje')
 client.subscribe('corriente')
 client.subscribe('potencia')
 
+# Configura los parámetros del correo electrónico
+remitente = 'lasama1525@gmail.com'
+password = 'znxtmpcebromjqga'
+destinatario = 'lasama1525@gmail.com'
+asuntoCosto = 'Costo energia'
+asuntoVoltaje = 'Energia'
+cuerpoVoltaje = 'No hay energia en la vivienda.'
+hora_envio = '21:50'
+costoEnergiaTotal = []
+
+def send_email(valorCosto):
+    mensaje = MIMEMultipart()
+    mensaje['From'] = remitente
+    mensaje['To'] = destinatario
+    mensaje['Subject'] = asuntoCosto
+    mensaje.attach(MIMEText(cuerpoCosto, 'plain'))
+
+    # Configura el servidor SMTP y el puerto a utilizar
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+                # Inicia sesión en el servidor SMTP
+    server.login(remitente, password)
+
+                # Envía el mensaje
+    texto = mensaje.as_string()
+    server.sendmail(remitente, destinatario, texto)
+
+                # Cierra la conexión con el servidor SMTP
+    server.quit()
+
+schedule.every().day.at(hora_envio).do(send_email)
+
+
+
 # Inicia el loop del cliente MQTT
 client.loop_start()
 
-""" for i in range(len(datos)):
-        pot.append(float(datos[i])) """
 
 # Bucle infinito que se ejecutará cada 2 segundos para mostrar los mensajes
 while True:
     tiempo_transcurrido = time.time() - tiempo_inicial
+    tiempo_transcurrido_correo = time.time() - tiempo_inicial_voltaje
 
     datos.append(mensaje_3)
     pot = ([float(i) for i in datos if i != 0])
@@ -75,32 +112,13 @@ while True:
     tiempo = 10
 
     promPot = (sum(pot)/len(datos))/1000
-    costoEnergia = ((sum(pot) * 1)/1000)
+    costoEnergia = ((sum(pot)/1000) * 1 * 0.0417)
     print('costo energia:',costoEnergia)
     potTotal = sum(pot)
     print('Potencia Total:', potTotal)
 
-    """ if(mensaje_1 >= '130'):
-        # Crea el mensaje a enviar
-        mensaje = 'El voltaje es mayor a 130'
-
-        # Envía el mensaje
-        server.sendmail(remitente, destinatario, mensaje)
-
-        # Cierra la conexión con el servidor SMTP
-        server.quit()
-
-    for i in range(len(pot)):
-        if(pot[i] == 0):
-             # Crea el mensaje a enviar
-            mensaje = ''
-
-            # Envía el mensaje
-            server.sendmail(remitente, destinatario, 'No hay consumo de potencia')
-
-            # Cierra la conexión con el servidor SMTP
-            server.quit() """
-       
+    schedule.run_pending()
+    time.sleep(1)    
 
     print('promedio potencia:', promPot)
     # Abre el archivo CSV en modo de añadir para agregar los nuevos datos
@@ -126,7 +144,7 @@ while True:
 
             # Fit a linear regression model on the training set
             model = LinearRegression().fit(X_train, y_train)
-            if tiempo_transcurrido >= 3600:
+            if tiempo_transcurrido > 3600:
 
                 with open('datos.csv', 'a', newline='') as archivo_csv:
                     writer = csv.writer(archivo_csv)
@@ -140,30 +158,34 @@ while True:
 
                 write_api = client1.write_api(write_options=SYNCHRONOUS)
 
+                costoEnergiaTotal.append((costoEnergia*800))
+                costoTotal = float(sum(costoEnergiaTotal))
+                print('Costo energia total: ', costoTotal)
+
                 # Crear punto de datos
-                point = Point("Analitica").tag("ubicacion", "cuarto").field("prediccion", (((costoEnergia*950)-predictions[0])-predictions[0])).field("promedioPotencia", promPot).field("costoEnergia", (costoEnergia*800)).field("potenciaTotal", potTotal)
-                
-                # Configura los parámetros del correo electrónico
-                remitente = 'lasama1525@gmail.com'
-                password = 'znxtmpcebromjqga'
-                destinatario = 'lasama1525@gmail.com'
-                asunto = 'Prueba'
-                cuerpo = 'Cuerpo del correo electrónico'
+                point = Point("Analitica").tag("ubicacion", "cuarto").field("prediccion", (((costoEnergia*950)-predictions[0])-predictions[0])).field("promedioPotencia", promPot).field("costoEnergia", (costoEnergia*800)).field("potenciaTotal", potTotal).field("costoTotalEsteSi", costoTotal)
+            
+                cuerpoCosto = f'El costo registrado de energia en la hora anterior fue de {(costoEnergia*800)}'
+
+                mensaje = MIMEMultipart()
+                mensaje['From'] = remitente
+                mensaje['To'] = destinatario
+                mensaje['Subject'] = asuntoCosto
+                mensaje.attach(MIMEText(cuerpoCosto, 'plain'))
 
                 # Configura el servidor SMTP y el puerto a utilizar
                 server = smtplib.SMTP('smtp.gmail.com', 587)
                 server.starttls()
-
-                # Inicia sesión en el servidor SMTP
+                            # Inicia sesión en el servidor SMTP
                 server.login(remitente, password)
-                 # Crea el mensaje a enviar
-                mensaje = f'El costo de la energia de {costoEnergia}'
 
-                # Envía el mensaje
-                server.sendmail(remitente, destinatario, mensaje)
+                            # Envía el mensaje
+                texto = mensaje.as_string()
+                server.sendmail(remitente, destinatario, texto)
 
-                # Cierra la conexión con el servidor SMTP
+                            # Cierra la conexión con el servidor SMTP
                 server.quit()
+
 
                 # Escribir los datos en la base de datos
                 write_api.write(bucket=bucket, org=org, record=point)
@@ -171,5 +193,30 @@ while True:
                     writer = csv.writer(archivo_csv)
                     writer.writerow(['promedioPotencia', 'costo', 'costoEnergia'])
                 tiempo_inicial = time.time()
+
+
+            if tiempo_transcurrido_correo >= 15:
+                print(f'Valor de voltaje: {float(mensaje_1)}')
+                if float(mensaje_1) == 0.0:
+                    # Crea el mensaje a enviar
+                    mensaje = MIMEMultipart()
+                    mensaje['From'] = remitente
+                    mensaje['To'] = destinatario
+                    mensaje['Subject'] = asuntoVoltaje
+                    mensaje.attach(MIMEText(cuerpoVoltaje, 'plain'))
+
+                    # Configura el servidor SMTP y el puerto a utilizar
+                    server = smtplib.SMTP('smtp.gmail.com', 587)
+                    server.starttls()
+                    # Inicia sesión en el servidor SMTP
+                    server.login(remitente, password)
+
+                    # Envía el mensaje
+                    texto = mensaje.as_string()
+                    server.sendmail(remitente, destinatario, texto)
+
+                    # Cierra la conexión con el servidor SMTP
+                    server.quit()
+                    tiempo_inicial_voltaje = time.time()
 
     time.sleep(3)    
